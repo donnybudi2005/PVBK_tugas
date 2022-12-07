@@ -1,0 +1,172 @@
+#include <iostream>
+#include <typeinfo>
+#include <ctime>
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/highgui.hpp>
+#include <math.h>
+#include <algorithm>
+#include <vector>
+
+#pragma comment(lib, "opencv_world460")
+
+using namespace cv;
+using namespace std;
+
+bool checkImageProperties(Mat& img1, Mat& img2)
+{
+	if (img1.empty())
+	{
+		printf("img1 is empty");
+		return false;
+	}
+
+	if (img2.empty())
+	{
+		printf("img2 is empty");
+		return false;
+	}
+
+	if (img1.cols != img2.cols)
+	{
+		printf("widths are different\n");
+		return false;
+	}
+
+	if (img1.rows != img2.rows)
+	{
+		printf("heights are different\n");
+		return false;
+	}
+
+	if (img1.channels() != img2.channels())
+	{
+		printf("Channels are different\n");
+		return false;
+	}
+
+	return true;
+}
+
+void templateMatching(Mat& img_src, Mat& template_src, Mat& img_dst){
+	int height = template_src.rows;
+	int widht = template_src.cols;
+	int nTemplate_Pixels = height * widht;
+	double total = DBL_MAX;
+	int x_point, y_point;
+	//cout << total << endl;
+	int result = 0;
+	Vec3b bgr_dst;
+	uchar gray_src = 0;
+	for (int y = 0; y < img_src.rows; y++)
+	{
+		for (int x = 0; x < img_src.cols; x++)
+		{
+			bgr_dst[0] = bgr_dst[1] = bgr_dst[2] = img_src.at<uchar>(y, x);
+			img_dst.at<Vec3b>(y, x) = bgr_dst;
+		}
+	}
+
+	int nT = 0;
+	for (int u = 0; u < height; u++) {
+		for (int v = 0; v < widht; v++) {
+			int templatePixel = template_src.at<uchar>(u, v);
+			nT = nT + templatePixel;
+		}
+	}
+	int uT = nT / nTemplate_Pixels;
+
+	for (int y = 0; y < img_src.rows - height; y++)
+	{
+		for (int x = 0; x < img_src.cols - widht; x++)
+		{
+			result = 0;
+			int nI = 0;
+			for (int u = 0; u < height; u++) {
+				for (int v = 0; v < widht; v++) {
+					int img_srcPixel = img_src.at<uchar>(y + u, x + v);
+					nI = nI + img_srcPixel;
+				}
+			}
+			int uI = nI / nTemplate_Pixels;
+
+			for (int u = 0; u < height; u++) {
+				for (int v = 0; v < widht; v++) {
+					int templatePixel = template_src.at<uchar>(u, v);
+					int img_srcPixel = img_src.at<uchar>(y + u, x + v);
+					int selisih = abs(templatePixel - img_srcPixel);
+					int template_1 = templatePixel - uT; // template - rata2
+					int inputPixel = img_srcPixel - uI; // input - rata2
+					// SAD
+					// result = result + selisih;
+					// SSD
+					// result = result + selisih * selisih;
+					// CC
+					// result = result + templatePixel * img_srcPixel;
+					// NCC
+					result = (template_1 * inputPixel) / (sqrt((template_1 ^ 2) * (inputPixel ^ 2)));
+				}
+			}
+			if (total > result) {
+				total = result;
+				x_point = x;
+				y_point = y;
+			}
+		}
+	}
+
+	for (int u = 0; u < height; u++) {
+		for (int v = 0; v < widht; v++) {
+			gray_src = img_src.at<uchar>(y_point + u, x_point + v);
+			if (u == 0 || v == 0 || u == height - 1 || v == widht - 1) {
+				bgr_dst[0] = 0;
+				bgr_dst[1] = 0;
+				bgr_dst[2] = 255;
+				img_dst.at<Vec3b>(y_point + u, x_point + v) = bgr_dst;
+			}
+		}
+	}
+	cout << total << endl;
+	cout << uT << endl;
+}
+
+int main()
+{
+	// Read the file
+	Mat inputIMG = imread("test.jpg", IMREAD_COLOR);
+	Mat inputTemplate = imread("test_template.jpg", IMREAD_COLOR);
+	Mat inputImg_1 = imread("eagle.jpeg", IMREAD_COLOR);
+	Mat inputImg_2 = imread("eagle_edit.jpeg", IMREAD_COLOR);
+	Mat inputImg_3 = imread("kotak.jpg", cv::IMREAD_GRAYSCALE);
+	Mat inputImg_4 = imread("bangun2d.jpg", cv::IMREAD_GRAYSCALE);
+	Mat outputImg_4 = Mat::zeros(inputImg_4.size(), CV_8UC1);
+	Mat outputLabel = Mat::zeros(inputImg_4.size(), CV_8UC3);
+
+	// Check for invalid input
+	if (inputImg_1.empty() || inputImg_2.empty() || inputImg_3.empty() || inputImg_4.empty())
+	{
+		cout << "Could not open or find the image" << std::endl;
+		return -1;
+	}
+
+	////////////////////////////////////////////////////////////////////////////////
+	Mat grayIMG = Mat::zeros(inputIMG.size(), CV_8UC1);
+	Mat outputThreshold = Mat::zeros(inputIMG.size(), CV_8UC1);
+	rgb2gray(inputIMG, grayIMG);
+
+	Mat templateGray = Mat::zeros(inputTemplate.size(), CV_8UC1);
+	Mat outputTemplate = Mat::zeros(inputIMG.size(), CV_8UC3);
+	rgb2gray(inputTemplate, templateGray);
+
+	templateMatching(grayIMG, templateGray, outputTemplate);
+	imshow("Input IMG", grayIMG);
+	imshow("Template gray", templateGray);
+	imshow("Output Template", outputTemplate);
+
+	// Wait for a keystroke in the window
+	waitKey(0);
+	destroyAllWindows();
+	return 0;
+}
